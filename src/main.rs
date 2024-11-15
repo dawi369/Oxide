@@ -1,83 +1,116 @@
+#![allow(warnings)]
+
+// Standard library imports
 use std::convert::Infallible;
 use std::net::SocketAddr;
 
-use http_body_util::Full;
-use hyper::body::Bytes;
-use hyper::server::conn::http1;
+// Hyper core imports
+use hyper::{Method, Request, Response, StatusCode};
 use hyper::service::service_fn;
-use hyper::{Request, Response};
+use hyper::server::conn::http1;
+
+// Hyper body-related imports
+use hyper::body::{Body, Bytes, Frame};
+use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+
+// Runtime and IO imports
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
-use hyper::body::Frame;
-use hyper::{Method, StatusCode};
-use http_body_util::{combinators::BoxBody, BodyExt};
 
 
 async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+    Ok(Response::new(Full::new(Bytes::from("Hello, World!\n"))))
 }
 
 
-async fn echo(
-    req: Request<hyper::body::Incoming>,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => Ok(Response::new(full(
-            "Try POSTing data to /echo",
-        ))),
-        (&Method::POST, "/echo") => {
-            // we'll be back
-        },
+async fn handle_inference(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    // Get the path and query parameters
+    let uri = req.uri();
+    if let Some(query) = uri.query() {
+        // Parse the number parameter
+        if let Some(number_str) = query.split('=').nth(1) {
+            if let Ok(number) = number_str.parse::<f64>() {
+                let result = number.sqrt();
+                return Ok(Response::new(Full::new(Bytes::from(format!("{}\n", result)))))
+            }
+        }
+    }
+    
+    // Return 400 Bad Request if the input is invalid
+    let mut response = Response::new(Full::new(Bytes::from("Invalid input. Use /inference?number=#\n")));
+    *response.status_mut() = StatusCode::BAD_REQUEST;
+    Ok(response)
+}
 
-        // Return 404 Not Found for other routes.
+
+async fn router(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/") => hello(req).await,
+        (&Method::GET, "/inference") => handle_inference(req).await,
         _ => {
-            let mut not_found = Response::new(empty());
-            *not_found.status_mut() = StatusCode::NOT_FOUND;
-            Ok(not_found)
+            let mut response = Response::new(Full::new(Bytes::from("404 Not Found\n")));
+            *response.status_mut() = StatusCode::NOT_FOUND;
+            Ok(response)
         }
     }
 }
 
 
-// We create some utility functions to make Empty and Full bodies
-// fit our broadened Response body type.
-fn empty() -> BoxBody<Bytes, hyper::Error> {
-    Empty::<Bytes>::new()
-        .map_err(|never| match never {})
-        .boxed()
-}
-fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
-    Full::new(chunk.into())
-        .map_err(|never| match never {})
-        .boxed()
+
+async fn shutdown_signal() {
+    // Wait for the CTRL+C signal
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install CTRL+C signal handler");
 }
 
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
     // We create a TcpListener and bind it to 127.0.0.1:3000
     let listener = TcpListener::bind(addr).await?;
+    // specify our HTTP settings (http1, http2, auto all work)
+    let mut http = http1::Builder::new();
+    // the graceful watcher
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    // when this signal completes, start shutdown
+    let mut signal = std::pin::pin!(shutdown_signal());
 
-    // We start a loop to continuously accept incoming connections
+    // Our server accept loop
     loop {
-        let (stream, _) = listener.accept().await?;
+        tokio::select! {
+            Ok((stream, _addr)) = listener.accept() => {
+                let io = TokioIo::new(stream);
+                let conn = http.serve_connection(io, service_fn(router));
+                // watch this connection
+                let fut = graceful.watch(conn);
+                tokio::spawn(async move {
+                    if let Err(e) = fut.await {
+                        eprintln!("Error serving connection: {:?}", e);
+                    }
+                });
+            },
 
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
-        let io = TokioIo::new(stream);
-
-        // Spawn a tokio task to serve multiple connections concurrently
-        tokio::task::spawn(async move {
-            // Finally, we bind the incoming connection to our `hello` service
-            if let Err(err) = http1::Builder::new()
-                // `service_fn` converts our function in a `Service`
-                .serve_connection(io, service_fn(hello))
-                .await
-            {
-                eprintln!("Error serving connection: {:?}", err);
+            _ = &mut signal => {
+                eprintln!("\ngraceful shutdown signal received");
+                // stop the accept loop
+                break;
             }
-        });
+        }
     }
+
+    // Now start the shutdown and wait for them to complete
+    // Optional: start a timeout to limit how long to wait.
+    tokio::select! {
+        _ = graceful.shutdown() => {
+            eprintln!("all connections gracefully closed");
+        },
+        _ = tokio::time::sleep(std::time::Duration::from_secs(3)) => {
+            eprintln!("timed out wait for all connections to close");
+        }
+    }
+
+    Ok(())
 }
