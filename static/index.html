@@ -2,26 +2,144 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inference Frontend</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background: linear-gradient(135deg, #74ABE2, #5563DE);
+            font-family: 'Roboto', sans-serif;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            max-width: 800px;
+            padding-top: 50px;
+            text-align: center;
+        }
+        h1 {
+            font-weight: 700;
+            margin-bottom: 30px;
+        }
+        .prompt-area {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .prompt-area textarea {
+            width: 100%;
+            padding: 15px 50px 15px 15px;
+            border: none;
+            border-radius: 5px;
+            resize: none;
+            font-size: 16px;
+            color: #333;
+        }
+        .prompt-area .fa-pencil {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            color: #888;
+        }
+        .btn {
+            background: #FF5E62;
+            background: linear-gradient(45deg, #FF9966, #FF5E62);
+            border: none;
+            padding: 15px 30px;
+            color: #fff;
+            font-size: 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: linear-gradient(45deg, #FF5E62, #FF9966);
+        }
+        .note {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #FFD700;
+        }
+        #output {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 5px;
+            text-align: left;
+            white-space: pre-wrap;
+            margin-top: 30px;
+        }
+        .loader {
+            border: 8px solid rgba(255, 255, 255, 0.1);
+            border-top: 8px solid #fff;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 30px auto;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        footer {
+            margin-top: 50px;
+            color: #ccc;
+        }
+    </style>
     <script>
+        let isProcessing = false;
+
         async function submitPrompt() {
+            if (isProcessing) {
+                alert("Please wait for the current output before submitting another query.");
+                return;
+            }
             const prompt = document.getElementById("prompt").value;
-            const response = await fetch("http://localhost:3000/inference", {
-                method: "POST",
-                headers: { "Content-Type": "text/plain" },
-                body: prompt
-            });
-            const text = await response.text();
-            document.getElementById("output").innerText = text;
+            if (!prompt.trim()) {
+                alert("Please enter a prompt.");
+                return;
+            }
+            isProcessing = true;
+            document.getElementById("output").innerText = "";
+            document.getElementById("loader").style.display = "block";
+            try {
+                const response = await fetch("http://localhost:3000/inference", {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain" },
+                    body: prompt
+                });
+                const text = await response.text();
+                document.getElementById("output").innerText = text;
+            } catch (error) {
+                document.getElementById("output").innerText = "An error occurred: " + error;
+            } finally {
+                document.getElementById("loader").style.display = "none";
+                isProcessing = false;
+            }
         }
     </script>
 </head>
 <body>
-    <h1>Inference Frontend</h1>
-    <textarea id="prompt" rows="5" cols="50" placeholder="Enter your prompt here"></textarea><br>
-    <button onclick="submitPrompt()">Submit</button>
-    <h2>Output:</h2>
-    <div id="output" style="white-space: pre-wrap;"></div>
+    <div class="container">
+        <h1><i class="fa fa-lightbulb-o"></i> Inference Frontend (Currently Powered by GPT-2)</h1>
+        <div class="prompt-area">
+            <textarea id="prompt" rows="5" placeholder="Enter your prompt here..."></textarea>
+            <i class="fa fa-pencil"></i>
+        </div>
+        <button class="btn" onclick="submitPrompt()">Submit</button>
+        <div class="note">Please wait for the model to produce an output before submitting another query.</div>
+        <div id="loader" class="loader"></div>
+        <h2>Output:</h2>
+        <div id="output"></div>
+    </div>
+    <footer>
+        &copy; 2023 Inference Frontend. All rights reserved.
+    </footer>
 </body>
 </html>

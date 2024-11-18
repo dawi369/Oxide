@@ -1,36 +1,49 @@
-# Stage 1: Build the Rust application
-FROM rust:latest AS builder
+# Use the latest Rust slim image
+FROM rust:slim-bookworm AS builder
 
-# Add the musl target for building a statically linked binary
-RUN rustup target add x86_64-unknown-linux-musl
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install required dependencies for static linking
-RUN apt update && apt install -y musl-tools musl-dev build-essential
-
-# Set the working directory inside the container
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy the source code into the container
+# Copy project files
 COPY . .
 
-# Set Rust flags to use the musl linker
-ENV RUSTFLAGS='-C linker=musl-gcc'
+# Ensure the Data folder is available in the builder stage
+# If Data is part of the project files, this step is redundant
+# Otherwise, ensure Data is copied or created here
+# COPY /path/to/local/Data /app/Data
 
-# Build the application in release mode for the musl target to produce a static binary
-RUN cargo build --release --target x86_64-unknown-linux-musl
+# Update dependencies
+RUN cargo update
 
-# Stage 2: Run the application in a minimal image
-FROM scratch
+# Build project
+RUN cargo build --release
 
-# Set environment variables (customize based on your server requirements)
-ENV SERVER_HOST=0.0.0.0
-ENV SERVER_PORT=8080
+# Use minimal runtime image
+FROM debian:bookworm-slim
 
-# Expose the port the server will listen on
-EXPOSE 8080
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the statically compiled binary from the builder stage
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/your_binary_name /app/server
+# Set working directory
+WORKDIR /app
 
-# Set the default command to run the server
-CMD ["/app/server"]
+# Copy the built binary
+COPY --from=builder /app/target/release/oxide /app/
+
+# Copy the Data folder for runtime
+COPY --from=builder /app/Data /app/Data
+
+# Expose the application's port
+EXPOSE 3000
+
+# Run the application
+CMD ["./oxide"]
