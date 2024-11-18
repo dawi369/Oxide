@@ -1002,9 +1002,7 @@ dependencies = [
  "libloading",
  "ndarray",
  "ort-sys",
- "sha2",
  "tracing",
- "ureq",
 ]
 
 [[package]]

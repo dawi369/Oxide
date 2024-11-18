@@ -41,10 +41,13 @@ async fn router(
                 Ok(collected) => {
                     let input = String::from_utf8(collected.to_bytes().to_vec())
                         .unwrap_or_else(|_| "Invalid input".to_string());
+
+                    println!("Input: {:?}", input);
                     
                     // Handle the result of generate_text
                     match gpt2::generate_text(&model_handler, &input) {
                         Ok(output) => {
+                            println!("Output: {:?}", output);
                             Ok(Response::new(Full::new(Bytes::from(output))))
                         }
                         Err(_) => {
