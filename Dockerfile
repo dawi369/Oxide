@@ -41,6 +41,7 @@ COPY --from=builder /app/target/release/oxide /app/
 
 # Copy the Data folder for runtime
 COPY --from=builder /app/Data /app/Data
+COPY --from=builder /app/static /app/static
 
 # Expose the application's port
 EXPOSE 3000
