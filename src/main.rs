@@ -1,8 +1,7 @@
 #![allow(warnings)]
 
 // Models
-mod models;
-use models::ModelHandler;
+mod gpt2;
 
 // Standard library imports
 use std::convert::Infallible;
@@ -32,7 +31,7 @@ async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>
 // ROUTER FUNCTION ----------------------------------------------------------------------------------------------------------
 async fn router(
     mut req: Request<hyper::body::Incoming>,
-    model_handler: Arc<Mutex<ModelHandler>>,
+    model_handler: Arc<ort::Session>
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") => hello(req).await,
@@ -42,10 +41,12 @@ async fn router(
                 Ok(collected) => {
                     let input = String::from_utf8(collected.to_bytes().to_vec())
                         .unwrap_or_else(|_| "Invalid input".to_string());
-
-                    let handler = model_handler.lock().await;
-                    match handler.handle_inference(input).await {
-                        Ok(response) => Ok(response),
+                    
+                    // Handle the result of generate_text
+                    match gpt2::generate_text(&model_handler, &input) {
+                        Ok(output) => {
+                            Ok(Response::new(Full::new(Bytes::from(output))))
+                        }
                         Err(_) => {
                             let mut response = Response::new(Full::new(Bytes::from("Internal Server Error")));
                             *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
@@ -81,12 +82,9 @@ async fn shutdown_signal() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    // Load the model
-    let model_handler = Arc::new(Mutex::new(
-        ModelHandler::new("Models/gptneox_Opset16.onnx")
-            .await
-            .expect("Failed to load model"),
-    ));
+    //Initialize the model
+    let model_handler = Arc::new(gpt2::initialize_session()?);
+
 
     // We create a TcpListener and bind it to 127.0.0.1:3000
     let listener = TcpListener::bind(addr).await?;
@@ -101,11 +99,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::select! {
             Ok((stream, _addr)) = listener.accept() => {
-                let model_handler = model_handler.clone();
                 let io = TokioIo::new(stream);
+                let model_handler_clone = model_handler.clone();
                 let conn = http.serve_connection(
                     io,
-                    service_fn(move |req| router(req, model_handler.clone()))
+                    service_fn(move |req| router(req, model_handler_clone.clone()))
                 );
 
                 if let Err(e) = conn.await {
