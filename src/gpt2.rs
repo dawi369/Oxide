@@ -14,9 +14,9 @@ use rand::Rng;
 use tokenizers::Tokenizer;
 
 /// Max tokens to generate
-const GEN_TOKENS: usize = 50; // Adjusted for the 50-token constraint
+const GEN_TOKENS: usize = 100; // Adjusted for the 50-token constraint
 /// Top_K -> Sample from the k most likely next tokens at each step. Lower k focuses on higher probability tokens.
-const TOP_K: usize = 2;
+const TOP_K: usize = 5;
 
 pub fn initialize_session() -> ort::Result<Session> {
     // Create the ONNX Runtime environment, enabling CUDA execution providers for all sessions created in this process.
@@ -78,7 +78,7 @@ pub fn generate_text(session: &Session, prompt: &str) -> ort::Result<String> {
 
     // Ensure output is concise and within token limits
     let truncated_text = generated_text.split_whitespace().take(GEN_TOKENS).collect::<Vec<_>>().join(" ");
-    println!("{}", truncated_text);
+    // println!("{}", truncated_text);
 
     Ok(truncated_text)
 }

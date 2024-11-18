@@ -3,6 +3,9 @@
 // Models
 mod gpt2;
 
+// Frontend
+use std::fs;
+
 // Standard library imports
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -25,7 +28,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!\n"))))
+    Ok(Response::new(Full::new(Bytes::from("Welcome to a lobotimized version of GPT-2\n"))))
 }
 
 // ROUTER FUNCTION ----------------------------------------------------------------------------------------------------------
@@ -34,7 +37,14 @@ async fn router(
     model_handler: Arc<ort::Session>
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => hello(req).await,
+        (&Method::GET, "/") => {
+            let html = fs::read_to_string("static/index.html").unwrap_or_else(|_| "File not found".to_string());
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "text/html")
+                .body(Full::new(Bytes::from(html)))
+                .unwrap())
+        }
         (&Method::POST, "/inference") => {
             let body_bytes = req.body_mut().collect().await;
             match body_bytes {
@@ -42,12 +52,12 @@ async fn router(
                     let input = String::from_utf8(collected.to_bytes().to_vec())
                         .unwrap_or_else(|_| "Invalid input".to_string());
 
-                    println!("Input: {:?}", input);
+                    // println!("Input: {:?}", input);
                     
                     // Handle the result of generate_text
                     match gpt2::generate_text(&model_handler, &input) {
                         Ok(output) => {
-                            println!("Output: {:?}", output);
+                            // println!("Output: {:?}", output);
                             Ok(Response::new(Full::new(Bytes::from(output))))
                         }
                         Err(_) => {

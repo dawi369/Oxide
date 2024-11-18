@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inference Frontend</title>
+    <script>
+        async function submitPrompt() {
+            const prompt = document.getElementById("prompt").value;
+            const response = await fetch("http://localhost:3000/inference", {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: prompt
+            });
+            const text = await response.text();
+            document.getElementById("output").innerText = text;
+        }
+    </script>
+</head>
+<body>
+    <h1>Inference Frontend</h1>
+    <textarea id="prompt" rows="5" cols="50" placeholder="Enter your prompt here"></textarea><br>
+    <button onclick="submitPrompt()">Submit</button>
+    <h2>Output:</h2>
+    <div id="output" style="white-space: pre-wrap;"></div>
+</body>
+</html>
