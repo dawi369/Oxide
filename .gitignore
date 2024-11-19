@@ -1,2 +1,3 @@
 /target
 /Models/**
+Data/gpt2.onnx
